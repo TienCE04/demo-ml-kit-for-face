@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f4f6f8" />
+  <title>ML Kit + BLE · Demo dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="ML Kit BLE Demo"><span class="brand-mark">M</span><span>FIELD NOTES <b>/ VISION LAB</b></span></a>
+      <span class="edition"><i></i> LOCAL DEMO</span>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">ON-DEVICE INTELLIGENCE <span>·</span> BLE STREAM</p>
+        <h1>Eyes on the edge.</h1>
+        <p class="lede">ML Kit phát hiện khuôn mặt ngay trên điện thoại. BLE chuyển kết quả trực tiếp sang dashboard này.</p>
+        <div class="actions">
+          <button id="connectBtn" class="button primary"><span class="bluetooth">ᛒ</span> Kết nối thiết bị</button>
+          <button id="simulateBtn" class="button ghost">Xem mô phỏng</button>
+        </div>
+        <p id="compatibility" class="hint">Chọn “Bật BLE cho web dashboard” trên app Android, sau đó kết nối tại đây.</p>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="scan-line"></div><div class="face-frame"><span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span><span class="face-oval"></span><span class="eye left"></span><span class="eye right"></span><span class="nose"></span><span class="mouth"></span></div>
+        <span class="art-tag tag-a">ML KIT · ON DEVICE</span><span class="art-tag tag-b">BLE GATT · LIVE</span>
+      </div>
+    </section>
+
+    <section class="dashboard-head"><div><p class="eyebrow">REAL-TIME TELEMETRY</p><h2>Detection session</h2></div><div id="connectionState" class="state"><i></i><span>Chưa kết nối</span></div></section>
+
+    <section class="metrics">
+      <article class="metric-card face-card"><span class="metric-label">KHUÔN MẶT</span><span id="faceCount" class="metric-value">—</span><span id="faceCaption" class="metric-note">Chờ dữ liệu từ điện thoại</span><div class="metric-icon">◉</div></article>
+      <article class="metric-card"><span class="metric-label">YAW <small>trái ↔ phải</small></span><span id="yaw" class="metric-value">—<small>°</small></span><span class="metric-note">Góc quay ngang</span><div class="mini-axis"><span></span></div></article>
+      <article class="metric-card"><span class="metric-label">PITCH <small>lên ↕ xuống</small></span><span id="pitch" class="metric-value">—<small>°</small></span><span class="metric-note">Góc cúi / ngẩng</span><div class="mini-axis vertical"><span></span></div></article>
+      <article class="metric-card attendance-card"><span class="metric-label">ĐIỂM DANH</span><span id="attendanceCount" class="metric-value">0<small> / 0</small></span><span id="sessionName" class="metric-note">Buổi học đang chọn</span><div class="metric-icon">✓</div></article>
+    </section>
+
+    <section class="lower-grid">
+      <article class="panel flow-panel">
+        <div class="panel-heading"><div><p class="eyebrow">PIPELINE</p><h3>Dữ liệu đi như thế nào</h3></div><span class="live-pill"><i></i> <span id="streamLabel">IDLE</span></span></div>
+        <div class="pipeline">
+          <div class="pipeline-node active"><span class="node-icon camera-icon">◉</span><b>Camera</b><small>Frame trực tiếp</small></div><span class="connector"><i></i></span>
+          <div class="pipeline-node active"><span class="node-icon model-icon">✳</span><b>ML Kit</b><small>Face detection</small></div><span class="connector"><i></i></span>
+          <div class="pipeline-node"><span class="node-icon ble-icon">ᛒ</span><b>Bluetooth LE</b><small>GATT notify</small></div><span class="connector"><i></i></span>
+          <div class="pipeline-node"><span class="node-icon web-icon">↗</span><b>Web UI</b><small>Live dashboard</small></div>
+        </div>
+        <div class="data-row"><span>MODEL</span><b id="modelName">ML Kit Face Detection · bundled</b><span>SOURCE</span><b id="sourceName">Camera</b></div>
+      </article>
+      <article class="panel log-panel">
+        <div class="panel-heading"><div><p class="eyebrow">EVENTS</p><h3>Activity log</h3></div><button id="clearLog" class="text-button">Xóa log</button></div>
+        <ol id="eventLog" class="event-log"><li class="empty-log">Chưa có sự kiện · chờ thiết bị gửi dữ liệu</li></ol>
+      </article>
+    </section>
+
+    <section class="panel attendance-panel">
+      <div class="panel-heading"><div><p class="eyebrow">CLASS ROSTER</p><h3>Lượt có mặt trong buổi</h3></div><span id="attendanceStatus" class="live-pill">Chưa nhận điểm danh</span></div>
+      <div class="table-wrap"><table><thead><tr><th>THỜI GIAN</th><th>MÃ SV</th><th>HỌ TÊN</th><th>ĐỘ KHỚP</th></tr></thead><tbody id="attendanceRows"><tr><td colspan="4" class="table-empty">Kết nối app và xác thực sinh viên để ghi nhận lượt có mặt.</td></tr></tbody></table></div>
+    </section>
+
+    <footer><span>FACE DETECTION · DỮ LIỆU CHẠY CỤC BỘ</span><span>ANDROID → BLE → WEB</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

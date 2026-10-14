@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Vision BLE Demo</string>
+    <string-array name="detection_modes">
+        <item>Nhanh</item>
+        <item>Chi tiết</item>
+    </string-array>
+</resources>
