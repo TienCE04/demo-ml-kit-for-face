@@ -12,12 +12,20 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Size
 import android.widget.ArrayAdapter
@@ -41,6 +49,7 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -49,10 +58,26 @@ class MainActivity : AppCompatActivity() {
     private var detector: FaceDetector? = null
     private var embeddingModel: FaceEmbeddingModel? = null
     private lateinit var attendanceRepository: AttendanceRepository
+    private lateinit var authGateway: DemoAttendanceGateway
     private var cameraProvider: ProcessCameraProvider? = null
     private var gattServer: BluetoothGattServer? = null
     private var advertising = false
+    private var advertisingSet: AdvertisingSet? = null
+    private var currentBroadcast: DemoAttendanceGateway.Broadcast? = null
     private var connectedDevice: android.bluetooth.BluetoothDevice? = null
+    private var bleScanner: BluetoothLeScanner? = null
+    private var scanning = false
+    private var scanStartedAt = 0L
+    private val scanSamples = mutableListOf<Int>()
+    private var activeAttempt: DemoAttendanceGateway.Attempt? = null
+    private var faceChallenge: DemoAttendanceGateway.FaceChallenge? = null
+    private val rotationHandler = Handler(Looper.getMainLooper())
+    private val rotateTask = object : Runnable {
+        override fun run() {
+            rotateBleToken()
+            if (advertising) rotationHandler.postDelayed(this, DemoAttendanceGateway.DEFAULT_ROTATE_MS)
+        }
+    }
     private var latestPayload = "{\"faces\":0,\"status\":\"waiting\"}"
     private var attendancePayloadUntil = 0L
     private var selectedMode = 0
@@ -91,15 +116,17 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         attendanceRepository = AttendanceRepository(this)
+        authGateway = DemoAttendanceGateway(attendanceRepository)
         binding.etSession.setText(attendanceRepository.currentSession())
         latestPayload = JSONObject()
             .put("source", "camera")
             .put("model", "fast")
             .put("faces", 0)
             .put("session", attendanceRepository.currentSession())
-            .put("presentCount", attendanceRepository.attendance().count { it.session == attendanceRepository.currentSession() })
+            .put("presentCount", attendanceRepository.attendance().count { it.session == attendanceRepository.currentSession() && it.status in setOf("PRESENT", "LATE") })
             .put("registeredCount", attendanceRepository.students().size)
             .put("attendees", attendanceSnapshot(attendanceRepository.currentSession()))
+            .put("auth", authGateway.payloadFor(null))
             .put("updatedAt", System.currentTimeMillis())
             .toString()
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -124,7 +151,10 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnPickImage.setOnClickListener { pickImage.launch("image/*") }
         binding.btnAttendanceRecords.setOnClickListener { startActivity(Intent(this, AttendanceActivity::class.java)) }
+        binding.btnFaceAuthDemo.setOnClickListener { startActivity(Intent(this, FaceDemoActivity::class.java)) }
         binding.btnCheckIn.setOnClickListener { checkInFromCamera() }
+        binding.btnBleScan.setOnClickListener { beginBleVerification() }
+        binding.btnEndSession.setOnClickListener { endAttendanceSession() }
         binding.btnBle.setOnClickListener {
             if (advertising) stopBleServer() else requestBlePermissions()
         }
@@ -212,9 +242,10 @@ class MainActivity : AppCompatActivity() {
             .put("roll", first?.headEulerAngleZ?.toDouble() ?: JSONObject.NULL)
             .put("smile", first?.smilingProbability?.toDouble() ?: JSONObject.NULL)
             .put("session", attendanceRepository.currentSession())
-            .put("presentCount", attendanceRepository.attendance().count { it.session == attendanceRepository.currentSession() })
+            .put("presentCount", attendanceRepository.attendance().count { it.session == attendanceRepository.currentSession() && it.status in setOf("PRESENT", "LATE") })
             .put("registeredCount", attendanceRepository.students().size)
             .put("attendees", attendanceSnapshot(attendanceRepository.currentSession()))
+            .put("auth", authGateway.payloadFor(activeAttempt))
             .put("updatedAt", System.currentTimeMillis())
             .toString()
         if (System.currentTimeMillis() > attendancePayloadUntil) {
@@ -224,6 +255,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkInFromCamera() {
+        if (!isFaceStepReady()) {
+            beginBleVerification()
+            return
+        }
         val photo = binding.previewView.bitmap
         if (photo == null) {
             showMessage("Camera chưa sẵn sàng. Hãy bật camera và nhìn thẳng vào máy.")
@@ -258,7 +293,7 @@ class MainActivity : AppCompatActivity() {
                     photo.recycle()
                     runOnUiThread {
                         binding.btnCheckIn.isEnabled = cameraProvider != null
-                        result.onSuccess { embedding -> matchAndCheckIn(embedding, session) }
+                        result.onSuccess { embedding -> submitFaceEvidence(embedding, session) }
                             .onFailure { showMessage("Không tạo được embedding: ${it.localizedMessage}") }
                     }
                 }
@@ -270,41 +305,74 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun matchAndCheckIn(embedding: FloatArray, session: String) {
-        val students = attendanceRepository.students()
-        if (students.isEmpty()) {
-            showMessage("Chưa có sinh viên. Mở Sinh viên & sổ điểm danh để đăng ký 3–4 ảnh mỗi người.")
+    private fun submitFaceEvidence(embedding: FloatArray, session: String) {
+        val attempt = activeAttempt
+        val challenge = faceChallenge
+        if (attempt == null || challenge == null) {
+            showMessage("Chưa có face challenge. Hãy xác minh BLE trước.")
             return
         }
-        val best = students.map { it to FaceEmbeddingModel.cosine(embedding, it.embedding) }.sortedByDescending { it.second }
-        val (student, score) = best.first()
-        val margin = if (best.size > 1) score - best[1].second else 1f
-        val threshold = attendanceRepository.matchThreshold()
-        if (score < threshold || margin < 0.035f) {
-            binding.tvMlResult.text = "Không xác thực · điểm khớp ${(score * 100).toInt()}% · ngưỡng ${(threshold * 100).toInt()}%"
-            showMessage("Không khớp sinh viên đã đăng ký. Điểm ${(score * 100).toInt()}%.")
+        val result = authGateway.verifyFaceEvidence(
+            attemptId = attempt.id,
+            embedding = embedding,
+            challengeNonce = challenge.nonce,
+            livenessPassed = true,
+            sessionCode = session
+        )
+        activeAttempt = result.attempt ?: attempt
+        binding.tvAuthStatus.text = "Xác thực: ${result.code} · server similarity ${(result.similarity * 100).roundToInt()}% · margin ${(result.margin * 100).roundToInt()}%"
+        if (!result.accepted || result.student == null) {
+            binding.tvMlResult.text = "KHÔNG XÁC THỰC\n${result.message}"
+            showMessage("${result.message} (${result.code})")
+            publishAuthPayload(session, result)
             return
         }
-        val inserted = attendanceRepository.markPresent(student, score, session)
-        binding.tvMlResult.text = if (inserted) "ĐIỂM DANH THÀNH CÔNG\n${student.name} · ${student.id} · khớp ${(score * 100).toInt()}%" else "ĐÃ ĐIỂM DANH\n${student.name} · ${student.id} · buổi $session"
+        val student = result.student
+        val inserted = result.attendance == "checked_in"
+        binding.tvMlResult.text = if (inserted) {
+            "ĐIỂM DANH THÀNH CÔNG\n${student.name} · ${student.id} · server khớp ${(result.similarity * 100).roundToInt()}%"
+        } else {
+            "ĐÃ ĐIỂM DANH\n${student.name} · ${student.id} · buổi $session"
+        }
         showMessage(if (inserted) "Đã điểm danh ${student.name}." else "${student.name} đã có mặt trong buổi này.")
-        val present = attendanceRepository.attendance().count { it.session == session }
-        latestPayload = JSONObject()
-            .put("source", "attendance")
+        publishAuthPayload(session, result)
+    }
+
+    private fun endAttendanceSession() {
+        val session = binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() }
+        val absentCount = attendanceRepository.finalizeSession(session)
+        authGateway.stopSession(session)
+        stopBleServer()
+        binding.tvAuthStatus.text = "Phiên đã ENDED · gateway chốt $absentCount sinh viên ABSENT"
+        binding.tvMlResult.text = "PHIÊN ĐÃ KẾT THÚC\nCác evidence sau thời điểm này không được chấp nhận."
+        publishAuthPayload(session)
+        showMessage("Đã kết thúc phiên và chốt $absentCount sinh viên vắng.")
+    }
+
+    private fun isFaceStepReady(): Boolean =
+        activeAttempt?.status == "VERIFYING"
+            && faceChallenge?.used == false
+            && (faceChallenge?.expiresAt ?: 0L) > System.currentTimeMillis()
+
+    private fun publishAuthPayload(session: String, result: DemoAttendanceGateway.FaceResult? = null) {
+        val students = attendanceRepository.students()
+        val payload = JSONObject()
+            .put("source", if (result == null) "ble" else "attendance")
             .put("model", "mobilefacenet")
-            .put("faces", 1)
-            .put("yaw", 0)
-            .put("pitch", 0)
-            .put("attendance", if (inserted) "checked_in" else "already_present")
-            .put("studentId", student.id)
-            .put("studentName", student.name)
+            .put("faces", if (result == null) 0 else 1)
             .put("session", session)
-            .put("similarity", score.toDouble())
-            .put("presentCount", present)
+            .put("presentCount", attendanceRepository.attendance().count { it.session == session && it.status in setOf("PRESENT", "LATE") })
             .put("registeredCount", students.size)
             .put("attendees", attendanceSnapshot(session))
+            .put("auth", authGateway.payloadFor(activeAttempt, result))
             .put("updatedAt", System.currentTimeMillis())
-            .toString()
+        result?.student?.let { student ->
+            payload.put("attendance", result.attendance)
+                .put("studentId", student.id)
+                .put("studentName", student.name)
+                .put("similarity", result.similarity.toDouble())
+        }
+        latestPayload = payload.toString()
         attendancePayloadUntil = System.currentTimeMillis() + 3500
         notifyWebClients()
     }
@@ -315,6 +383,7 @@ class MainActivity : AppCompatActivity() {
                 .put("studentId", record.studentId)
                 .put("studentName", record.studentName)
                 .put("similarity", record.similarity.toDouble())
+                .put("status", record.status)
                 .put("updatedAt", record.timestamp))
         }
     }
@@ -330,11 +399,146 @@ class MainActivity : AppCompatActivity() {
         binding.tvMlResult.text = "Camera đã tắt"
     }
 
+    /** Start the student side of the protocol. If this phone is also the local
+     * broadcaster, use the same bytes as a deterministic demo fallback. */
+    private fun beginBleVerification() {
+        val session = binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() }
+        attendanceRepository.setSession(session)
+        if (isFaceStepReady()) {
+            binding.tvAuthStatus.text = "Xác thực: BLE đã VERIFIED · có thể gửi face evidence"
+            return
+        }
+        val broadcast = currentBroadcast
+        if (broadcast != null && broadcast.sessionCode == session) {
+            val attempt = authGateway.createAttempt(session, UUID.randomUUID().toString())
+            activeAttempt = attempt
+            val now = System.currentTimeMillis()
+            val result = authGateway.verifyBleEvidence(
+                attempt.id,
+                DemoAttendanceGateway.BleEvidence(
+                    sessionCode = session,
+                    token = broadcast.token,
+                    scanCount = DemoAttendanceGateway.MIN_SCAN_COUNT,
+                    scanDurationMs = DemoAttendanceGateway.MIN_SCAN_DURATION_MS,
+                    rssiMin = -52,
+                    rssiMax = -44,
+                    rssiAverage = -48,
+                    firstSeenAt = now - DemoAttendanceGateway.MIN_SCAN_DURATION_MS,
+                    lastSeenAt = now
+                )
+            )
+            applyBleResult(result, session)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestBlePermissions()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestBlePermissions()
+            return
+        }
+        val scanner = adapter?.bluetoothLeScanner
+        if (scanner == null) {
+            showMessage("BLE scanner không khả dụng trên thiết bị này.")
+            return
+        }
+        val attempt = authGateway.createAttempt(session, UUID.randomUUID().toString())
+        activeAttempt = attempt
+        scanSamples.clear()
+        scanStartedAt = System.currentTimeMillis()
+        scanning = true
+        binding.btnBleScan.text = "Đang quét BLE…"
+        binding.tvAuthStatus.text = "Xác thực: SCAN_BLE · giữ điện thoại gần máy giảng viên"
+        bleScanner = scanner
+        try {
+            scanner.startScan(
+                listOf(android.bluetooth.le.ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()),
+                android.bluetooth.le.ScanSettings.Builder()
+                    .setScanMode(android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .build(),
+                scanCallback
+            )
+        } catch (error: SecurityException) {
+            scanning = false
+            showMessage("Thiếu quyền quét Bluetooth: ${error.localizedMessage}")
+        }
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val bytes = result.scanRecord?.getServiceData(ParcelUuid(SERVICE_UUID)) ?: return
+            val payload = bytes.toString(Charsets.UTF_8)
+            val parts = payload.split('|', limit = 3)
+            if (parts.size != 3 || parts[0] != "v1") return
+            val session = binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() }
+            if (parts[1] != session) return
+            if (!scanning) return
+            scanSamples += result.rssi
+            val elapsed = System.currentTimeMillis() - scanStartedAt
+            binding.tvAuthStatus.text = "Xác thực: SCAN_BLE · ${scanSamples.size}/${DemoAttendanceGateway.MIN_SCAN_COUNT} mẫu · RSSI ${result.rssi} dBm"
+            if (scanSamples.size >= DemoAttendanceGateway.MIN_SCAN_COUNT && elapsed >= DemoAttendanceGateway.MIN_SCAN_DURATION_MS) {
+                stopBleScan()
+                val attempt = activeAttempt ?: return
+                val evidence = DemoAttendanceGateway.BleEvidence(
+                    sessionCode = session,
+                    token = parts[2],
+                    scanCount = scanSamples.size,
+                    scanDurationMs = elapsed,
+                    rssiMin = scanSamples.minOrNull() ?: result.rssi,
+                    rssiMax = scanSamples.maxOrNull() ?: result.rssi,
+                    rssiAverage = scanSamples.average().roundToInt(),
+                    firstSeenAt = scanStartedAt,
+                    lastSeenAt = System.currentTimeMillis()
+                )
+                applyBleResult(authGateway.verifyBleEvidence(attempt.id, evidence), session)
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            runOnUiThread {
+                stopBleScan()
+                binding.tvAuthStatus.text = "Xác thực: quét BLE lỗi $errorCode"
+                showMessage("BLE scan thất bại ($errorCode).")
+            }
+        }
+    }
+
+    private fun stopBleScan() {
+        if (!scanning) return
+        scanning = false
+        try { bleScanner?.stopScan(scanCallback) } catch (_: SecurityException) { }
+        bleScanner = null
+        binding.btnBleScan.text = "Quét BLE để xác minh phiên"
+    }
+
+    private fun applyBleResult(result: DemoAttendanceGateway.BleResult, session: String) {
+        activeAttempt = result.attempt ?: activeAttempt
+        faceChallenge = activeAttempt?.challenge
+        if (result.accepted && activeAttempt?.status == "VERIFYING") {
+            binding.tvAuthStatus.text = "Xác thực: BLE VERIFIED · challenge ${faceChallenge?.type} · mở camera để gửi face evidence"
+            binding.btnCheckIn.isEnabled = cameraProvider != null
+            publishAuthPayload(session)
+            showMessage("BLE hợp lệ. Bây giờ mới thực hiện xác minh khuôn mặt.")
+        } else {
+            binding.tvAuthStatus.text = "Xác thực BLE bị từ chối · ${result.code}"
+            showMessage(result.message)
+            publishAuthPayload(session)
+        }
+    }
+
     private fun requestBlePermissions() {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.BLUETOOTH_ADVERTISE
             if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.BLUETOOTH_CONNECT
+            if (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.BLUETOOTH_SCAN
+        } else if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed += Manifest.permission.ACCESS_FINE_LOCATION
         }
         if (needed.isEmpty()) startBleServer() else blePermissions.launch(needed.toTypedArray())
     }
@@ -350,6 +554,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         try {
+            val session = binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() }
+            attendanceRepository.setSession(session)
+            currentBroadcast = authGateway.startSession(session)
             gattServer = bluetoothManager.openGattServer(this, gattCallback)
             val service = android.bluetooth.BluetoothGattService(SERVICE_UUID, android.bluetooth.BluetoothGattService.SERVICE_TYPE_PRIMARY)
             val result = BluetoothGattCharacteristic(
@@ -372,21 +579,78 @@ class MainActivity : AppCompatActivity() {
                 stopBleServer()
                 return
             }
-            val data = AdvertiseData.Builder().addServiceUuid(ParcelUuid(SERVICE_UUID)).setIncludeDeviceName(false).build()
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-                .setConnectable(true)
-                .build()
-            btAdapter.bluetoothLeAdvertiser?.startAdvertising(settings, data, advertiseCallback)
+            val advertiser = btAdapter.bluetoothLeAdvertiser
                 ?: run { showMessage("BLE advertiser không khả dụng."); stopBleServer(); return }
+            val parameters = AdvertisingSetParameters.Builder()
+                .setLegacyMode(false)
+                .setConnectable(true)
+                .setScannable(false)
+                .setPrimaryPhy(android.bluetooth.BluetoothDevice.PHY_LE_1M)
+                .setSecondaryPhy(android.bluetooth.BluetoothDevice.PHY_LE_1M)
+                .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
+                .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+                .build()
+            advertiser.startAdvertisingSet(
+                parameters,
+                advertisingData(currentBroadcast!!),
+                null,
+                null,
+                null,
+                advertisingSetCallback
+            )
             advertising = true
+            rotationHandler.removeCallbacks(rotateTask)
+            rotationHandler.postDelayed(rotateTask, DemoAttendanceGateway.DEFAULT_ROTATE_MS)
             binding.btnBle.text = "Tắt BLE"
-            binding.tvBleStatus.text = "Đang phát · chờ web dashboard kết nối"
+            binding.tvBleStatus.text = "Đang phát BLE · token xoay mỗi 30 giây · chờ dashboard"
+            binding.tvAuthStatus.text = "Xác thực: phiên ${session} đang phát challenge BLE"
         } catch (error: SecurityException) {
             showMessage("Thiếu quyền Bluetooth: ${error.localizedMessage}")
+            stopBleServer()
         } catch (error: Exception) {
             showMessage("Không khởi động được BLE: ${error.localizedMessage}")
+            stopBleServer()
+        }
+    }
+
+    private fun advertisingData(broadcast: DemoAttendanceGateway.Broadcast): AdvertiseData =
+        AdvertiseData.Builder()
+            .setIncludeTxPowerLevel(false)
+            .addServiceUuid(ParcelUuid(SERVICE_UUID))
+            .addServiceData(
+                ParcelUuid(SERVICE_UUID),
+                "v1|${broadcast.sessionCode}|${broadcast.token}".toByteArray(Charsets.UTF_8)
+            )
+            .build()
+
+    private fun rotateBleToken() {
+        val session = binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() }
+        val rotated = authGateway.rotateToken(session) ?: return
+        currentBroadcast = rotated
+        try {
+            advertisingSet?.setAdvertisingData(advertisingData(rotated))
+            binding.tvBleStatus.text = "Đang phát BLE · token vừa xoay · hết hạn sau 90 giây"
+        } catch (error: SecurityException) {
+            showMessage("Không thể xoay token BLE: ${error.localizedMessage}")
+        }
+    }
+
+    private val advertisingSetCallback = object : AdvertisingSetCallback() {
+        override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
+            runOnUiThread {
+                if (status == AdvertisingSetCallback.ADVERTISE_SUCCESS) {
+                    this@MainActivity.advertisingSet = advertisingSet
+                    binding.tvBleStatus.text = if (connectedDevice == null) {
+                        "Đang phát BLE · mở web dashboard để kết nối"
+                    } else {
+                        "Web dashboard đã kết nối · BLE đang phát"
+                    }
+                } else {
+                    advertising = false
+                    binding.tvBleStatus.text = "BLE advertising lỗi: $status"
+                    showMessage("BLE advertising thất bại ($status)")
+                }
+            }
         }
     }
 
@@ -436,13 +700,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopBleServer() {
-        try { adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } catch (_: SecurityException) { }
+        stopBleScan()
+        rotationHandler.removeCallbacks(rotateTask)
+        try { adapter?.bluetoothLeAdvertiser?.stopAdvertisingSet(advertisingSetCallback) } catch (_: SecurityException) { }
         gattServer?.close()
         gattServer = null
+        authGateway.stopSession(binding.etSession.text.toString().trim().ifBlank { attendanceRepository.currentSession() })
+        advertisingSet = null
+        currentBroadcast = null
         connectedDevice = null
         advertising = false
         binding.btnBle.text = "Bật BLE cho web dashboard"
         binding.tvBleStatus.text = "Chưa phát BLE"
+        binding.tvAuthStatus.text = "Xác thực: chưa bắt đầu · bước 1 là BLE evidence"
     }
 
     private fun showMessage(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -457,7 +727,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        val SERVICE_UUID: UUID = UUID.fromString("7c6f1000-8f1b-4d4b-a752-6f656d6f0001")
+        // Project3 contract: service data carries v1|<sessionCode>|<token>.
+        val SERVICE_UUID: UUID = UUID.fromString("7b7e2401-8d9c-4ea7-a5e1-2c89b47ef201")
         val RESULT_UUID: UUID = UUID.fromString("7c6f1001-8f1b-4d4b-a752-6f656d6f0001")
         val NOTIFY_UUID: UUID = UUID.fromString("7c6f1002-8f1b-4d4b-a752-6f656d6f0001")
         private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")

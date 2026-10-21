@@ -1,4 +1,4 @@
-const SERVICE_UUID = '7c6f1000-8f1b-4d4b-a752-6f656d6f0001';
+const SERVICE_UUID = '7b7e2401-8d9c-4ea7-a5e1-2c89b47ef201';
 const RESULT_UUID = '7c6f1001-8f1b-4d4b-a752-6f656d6f0001';
 const NOTIFY_UUID = '7c6f1002-8f1b-4d4b-a752-6f656d6f0001';
 const $ = (id) => document.getElementById(id);
@@ -37,7 +37,7 @@ function updateView(result, simulated = false) {
   if (result.session) {
     if (activeSession && activeSession !== result.session) {
       attended.clear();
-      $('attendanceRows').innerHTML = '<tr><td colspan="4" class="table-empty">Đang tải điểm danh của buổi mới…</td></tr>';
+      $('attendanceRows').innerHTML = '<tr><td colspan="5" class="table-empty">Đang tải điểm danh của buổi mới…</td></tr>';
     }
     activeSession = result.session;
     $('sessionName').textContent = result.session;
@@ -47,9 +47,37 @@ function updateView(result, simulated = false) {
   }
   if (Array.isArray(result.attendees)) result.attendees.forEach(record => addAttendanceRow(record, result.session));
   if (result.attendance) showAttendance(result);
+  if (result.auth) updateAuth(result.auth, result);
   document.querySelectorAll('.pipeline-node')[2].classList.add('active');
   document.querySelectorAll('.pipeline-node')[3].classList.add('active');
   if (!simulated) addEvent(`${faces} face${faces === 1 ? '' : 's'} · yaw ${angle(result.yaw)}° · pitch ${angle(result.pitch)}°`);
+}
+
+function updateAuth(auth, result) {
+  const stage = String(auth.verificationStage || 'IDLE');
+  const labels = {
+    IDLE: 'Chưa bắt đầu',
+    SCAN_BLE: 'Đang quét BLE',
+    BLE_VERIFIED: 'BLE đã xác minh',
+    VERIFIED: 'Đã xác thực',
+    REJECTED: 'Bị từ chối'
+  };
+  $('authStage').textContent = labels[stage] || stage;
+  $('authStage').className = `auth-stage ${stage.toLowerCase()}`;
+  const evidence = auth.bleEvidence;
+  $('bleEvidence').textContent = evidence
+    ? `${evidence.scanCount} mẫu · RSSI ${evidence.rssiAverage} dBm · ${Math.round(Number(evidence.scanDurationMs || 0) / 1000)} giây`
+    : 'Chưa nhận evidence';
+  const challenge = auth.faceChallenge;
+  $('faceChallenge').textContent = challenge
+    ? `${challenge.type} · ${challenge.used ? 'đã dùng' : 'đang chờ'}`
+    : 'Chưa cấp challenge';
+  const decision = auth.verificationCode || (stage === 'BLE_VERIFIED' ? 'Chờ embedding khuôn mặt' : 'Chưa có quyết định');
+  $('serverDecision').textContent = auth.serverSimilarity != null
+    ? `${decision} · ${(Number(auth.serverSimilarity) * 100).toFixed(1)}%`
+    : decision;
+  if (stage === 'BLE_VERIFIED') addEvent('Server đã xác minh BLE evidence · cấp face challenge.');
+  if (stage === 'VERIFIED' && result.studentName) addEvent(`Server quyết định ${result.studentName} · ${decision}.`);
 }
 
 function showAttendance(result) {
@@ -70,7 +98,7 @@ function addAttendanceRow(record, session) {
   $('attendanceRows').querySelector('.table-empty')?.closest('tr')?.remove();
   const row = document.createElement('tr');
   const time = new Date(Number(record.updatedAt || Date.now())).toLocaleTimeString('vi-VN', { hour12: false });
-  [time, record.studentId, record.studentName || 'Sinh viên', `${Math.round(Number(record.similarity || 0) * 100)}%`].forEach(value => {
+  [time, record.studentId, record.studentName || 'Sinh viên', record.status || 'PRESENT', `${Math.round(Number(record.similarity || 0) * 100)}%`].forEach(value => {
     const cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
   });
   $('attendanceRows').prepend(row);

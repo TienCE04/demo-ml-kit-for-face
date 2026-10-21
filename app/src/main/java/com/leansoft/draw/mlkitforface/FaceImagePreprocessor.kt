@@ -57,15 +57,22 @@ object FaceImagePreprocessor {
             }
         }
 
-        return Bitmap.createBitmap(
-            bitmap,
-            0,
-            0,
-            bitmap.width,
-            bitmap.height,
-            matrix,
-            true
-        )
+        val corrected = try {
+            Bitmap.createBitmap(
+                bitmap,
+                0,
+                0,
+                bitmap.width,
+                bitmap.height,
+                matrix,
+                true
+            )
+        } catch (error: Exception) {
+            bitmap.recycle()
+            throw error
+        }
+        if (corrected !== bitmap) bitmap.recycle()
+        return corrected
     }
 
     fun cropAndAlign(
@@ -106,7 +113,7 @@ object FaceImagePreprocessor {
             postRotate(-face.headEulerAngleZ)
         }
 
-        return Bitmap.createBitmap(
+        val aligned = Bitmap.createBitmap(
             crop,
             0,
             0,
@@ -115,5 +122,7 @@ object FaceImagePreprocessor {
             matrix,
             true
         )
+        if (crop !== bitmap && aligned !== crop) crop.recycle()
+        return aligned
     }
 }

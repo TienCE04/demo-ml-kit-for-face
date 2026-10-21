@@ -35,7 +35,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Face Detection chạy trực tiếp trên thiết bị. Kết quả được cung cấp qua BLE cho web dashboard."
+            android:text="BLE evidence trước, face challenge sau. ML Kit và MobileFaceNet chạy trên thiết bị; gateway giữ quyết định xác thực cuối cho demo."
             android:textColor="#56636B"
             android:textSize="14sp" />
 
@@ -69,6 +69,14 @@
                     android:text="Sinh viên &amp; sổ điểm danh" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFaceAuthDemo"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Thử riêng embedding &amp; xác thực khuôn mặt" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
@@ -219,6 +227,33 @@
                     android:textColor="#56636B"
                     android:textSize="12sp" />
 
+                <TextView
+                    android:id="@+id/tvAuthStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#EFF5F4"
+                    android:padding="10dp"
+                    android:text="Xác thực: chưa bắt đầu · bước 1 là BLE evidence"
+                    android:textColor="#23594F"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBleScan"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Quét BLE để xác minh phiên" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEndSession"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Kết thúc phiên · chốt vắng" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnBle"
                     android:layout_width="match_parent"
@@ -233,7 +268,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:layout_marginBottom="24dp"
-            android:text="Model face detection được đóng gói cùng ứng dụng. Không nhận diện danh tính; chỉ phát hiện khuôn mặt và góc đầu."
+            android:text="Demo chạy đầy đủ cổng BLE → face challenge → server similarity → điểm danh. Không gửi ảnh gốc hoặc token thô vào dashboard."
             android:textColor="#68757C"
             android:textSize="12sp" />
     </LinearLayout>

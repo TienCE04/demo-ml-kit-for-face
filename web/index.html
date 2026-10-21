@@ -41,6 +41,15 @@
       <article class="metric-card attendance-card"><span class="metric-label">ĐIỂM DANH</span><span id="attendanceCount" class="metric-value">0<small> / 0</small></span><span id="sessionName" class="metric-note">Buổi học đang chọn</span><div class="metric-icon">✓</div></article>
     </section>
 
+    <section class="panel auth-panel">
+      <div class="panel-heading"><div><p class="eyebrow">AUTHENTICATION GATE</p><h3>Luồng xác thực điểm danh</h3></div><span id="authStage" class="auth-stage idle">Chưa bắt đầu</span></div>
+      <div class="auth-grid">
+        <div><span>BLE EVIDENCE</span><b id="bleEvidence">Chưa nhận evidence</b><small>token được hash ở phía xác minh</small></div>
+        <div><span>FACE CHALLENGE</span><b id="faceChallenge">Chưa cấp challenge</b><small>chỉ cấp sau khi BLE hợp lệ</small></div>
+        <div><span>SERVER DECISION</span><b id="serverDecision">Chưa có quyết định</b><small>similarity tính ở gateway/server</small></div>
+      </div>
+    </section>
+
     <section class="lower-grid">
       <article class="panel flow-panel">
         <div class="panel-heading"><div><p class="eyebrow">PIPELINE</p><h3>Dữ liệu đi như thế nào</h3></div><span class="live-pill"><i></i> <span id="streamLabel">IDLE</span></span></div>
@@ -60,7 +69,7 @@
 
     <section class="panel attendance-panel">
       <div class="panel-heading"><div><p class="eyebrow">CLASS ROSTER</p><h3>Lượt có mặt trong buổi</h3></div><span id="attendanceStatus" class="live-pill">Chưa nhận điểm danh</span></div>
-      <div class="table-wrap"><table><thead><tr><th>THỜI GIAN</th><th>MÃ SV</th><th>HỌ TÊN</th><th>ĐỘ KHỚP</th></tr></thead><tbody id="attendanceRows"><tr><td colspan="4" class="table-empty">Kết nối app và xác thực sinh viên để ghi nhận lượt có mặt.</td></tr></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>THỜI GIAN</th><th>MÃ SV</th><th>HỌ TÊN</th><th>TRẠNG THÁI</th><th>ĐỘ KHỚP</th></tr></thead><tbody id="attendanceRows"><tr><td colspan="5" class="table-empty">Kết nối app và xác thực sinh viên để ghi nhận lượt có mặt.</td></tr></tbody></table></div>
     </section>
 
     <footer><span>FACE DETECTION · DỮ LIỆU CHẠY CỤC BỘ</span><span>ANDROID → BLE → WEB</span></footer>

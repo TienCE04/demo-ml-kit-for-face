@@ -23,4 +23,20 @@
         android:hint="Họ và tên"
         android:inputType="textCapWords"
         android:singleLine="true" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Chọn 3 ảnh theo thứ tự: chính diện, nghiêng trái, nghiêng phải. Có thể chọn thêm 1 ảnh. Ảnh chỉ xử lý tạm để tạo embedding trên thiết bị."
+        android:textColor="#68757C"
+        android:textSize="12sp" />
+
+    <CheckBox
+        android:id="@+id/cbConsent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Tôi đồng ý dùng embedding khuôn mặt cho điểm danh (v1)"
+        android:textSize="13sp" />
 </LinearLayout>

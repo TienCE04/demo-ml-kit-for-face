@@ -44,7 +44,7 @@ class AttendanceActivity : AppCompatActivity() {
                 return@registerForActivityResult
             }
             pendingUris = uris
-            processEnrollmentPhoto(0, emptyList())
+            processEnrollmentPhoto(0, emptyList(), emptyList())
         }
     private val exportCsv =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -99,23 +99,25 @@ class AttendanceActivity : AppCompatActivity() {
         binding.tvRosterEmpty.visibility = if (students.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
         students.forEach { student ->
             val row = ItemEnrolledStudentBinding.inflate(layoutInflater, binding.rosterContainer, false)
-            row.tvStudentInfo.text = "${student.name}\n${student.id} · ${student.sampleCount} ảnh → ${student.embedding.size}-D embedding"
+            val poseSummary = student.sampleTypes.distinct().joinToString("/").ifBlank { "legacy" }
+            row.tvStudentInfo.text = "${student.name}\n${student.id} · ${student.sampleCount} ảnh · $poseSummary · ${student.embedding.size}-D embedding"
             row.btnRemoveStudent.setOnClickListener { confirmRemove(student.id, student.name) }
             binding.rosterContainer.addView(row.root)
         }
 
         val session = repository.currentSession()
         val records = repository.attendance().filter { it.session == session }
+        val presentCount = records.count { it.status in setOf("PRESENT", "LATE") }
         binding.tvRosterHeader.text = "SINH VIÊN ĐÃ ĐĂNG KÝ · ${students.size}"
         binding.tvRecordsHeader.text = "ĐIỂM DANH · $session"
-        binding.tvRecordsSummary.text = "Có mặt ${records.size}/${students.size} sinh viên"
+        binding.tvRecordsSummary.text = "Có mặt ${presentCount}/${students.size} sinh viên · vắng ${records.count { it.status == "ABSENT" }}"
         binding.tvRecordsEmpty.visibility = if (records.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
         binding.recordsContainer.removeViews(2, (binding.recordsContainer.childCount - 2).coerceAtLeast(0))
         records.forEach { entry ->
             val time =
                 SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(entry.timestamp))
             val row = ItemAttendanceRecordBinding.inflate(layoutInflater, binding.recordsContainer, false)
-            row.tvRecord.text = "$time  ·  ${entry.studentName} (${entry.studentId})  ·  khớp ${(entry.similarity * 100).toInt()}%"
+            row.tvRecord.text = "$time  ·  ${entry.studentName} (${entry.studentId})  ·  ${entry.status}  ·  khớp ${(entry.similarity * 100).toInt()}%"
             binding.recordsContainer.addView(row.root)
         }
     }
@@ -127,7 +129,8 @@ class AttendanceActivity : AppCompatActivity() {
             .setPositiveButton("Chọn ảnh") { _, _ ->
                 val studentId = dialogBinding.etStudentId.text.toString().trim()
                 val studentName = dialogBinding.etStudentName.text.toString().trim()
-                if (studentId.isBlank() || studentName.isBlank()) toast("Nhập mã sinh viên và họ tên trước.")
+                if (!dialogBinding.cbConsent.isChecked) toast("Cần ghi nhận consent trước khi tạo embedding.")
+                else if (studentId.isBlank() || studentName.isBlank()) toast("Nhập mã sinh viên và họ tên trước.")
                 else {
                     pendingStudent = studentId to studentName
                     pickPhotos.launch("image/*")
@@ -135,16 +138,27 @@ class AttendanceActivity : AppCompatActivity() {
             }.show()
     }
 
-    private fun processEnrollmentPhoto(index: Int, vectors: List<FloatArray>) {
+    private fun processEnrollmentPhoto(index: Int, vectors: List<FloatArray>, sampleTypes: List<String>) {
         if (index >= pendingUris.size) {
             val student = pendingStudent ?: return
+            val required = setOf("FRONT", "LEFT", "RIGHT")
+            if (vectors.size !in 3..4 || !required.all(sampleTypes::contains)) {
+                pendingStudent = null
+                setTitle("Sinh viên & sổ điểm danh")
+                toast("Bộ ảnh cần đủ 3 tư thế: chính diện, nghiêng trái và nghiêng phải (tối đa thêm 1 ảnh).")
+                return
+            }
             val centroid = FaceEmbeddingModel.centroid(vectors)
             repository.saveStudent(
                 EnrolledStudent(
                     student.first,
                     student.second,
                     centroid,
-                    vectors.size
+                    vectors.size,
+                    sampleTypes,
+                    vectors,
+                    "ATTENDANCE_FACE_VERIFICATION_V1",
+                    System.currentTimeMillis()
                 )
             )
             pendingStudent = null
@@ -171,7 +185,7 @@ class AttendanceActivity : AppCompatActivity() {
                         toast("Ảnh ${index + 1}: cần đúng một khuôn mặt, tìm thấy ${faces.size}.")
                         return@addOnSuccessListener
                     }
-                    val rejection = FaceQualityValidator.rejectionReason(bitmap, faces.first())
+                    val rejection = FaceQualityValidator.rejectionReason(bitmap, faces.first(), allowEnrollmentPose = true)
                     if (rejection != null) {
                         bitmap.recycle()
                         setTitle("Sinh viên & sổ điểm danh")
@@ -186,10 +200,12 @@ class AttendanceActivity : AppCompatActivity() {
                         }
                         bitmap.recycle()
                         vector.onSuccess { next ->
+                            val pose = enrollmentPose(faces.first())
                             runOnUiThread {
                                 processEnrollmentPhoto(
                                     index + 1,
-                                    vectors + next
+                                    vectors + next,
+                                    sampleTypes + pose
                                 )
                             }
                         }
@@ -227,7 +243,7 @@ class AttendanceActivity : AppCompatActivity() {
         runCatching {
             contentResolver.openOutputStream(uri)?.use { stream ->
                 OutputStreamWriter(stream, Charsets.UTF_8).use { writer ->
-                    writer.write("session,student_id,student_name,check_in_time,similarity\n")
+                    writer.write("session,student_id,student_name,check_in_time,status,similarity\n")
                     repository.attendance().filter { it.session == repository.currentSession() }
                         .forEach { record ->
                             val csvName = "\"${record.studentName.replace("\"", "\"\"")}\""
@@ -237,7 +253,7 @@ class AttendanceActivity : AppCompatActivity() {
                                         "yyyy-MM-dd HH:mm:ss",
                                         Locale.US
                                     ).format(Date(record.timestamp))
-                                },${record.similarity}\n"
+                                },${record.status},${record.similarity}\n"
                             )
                         }
                 }
@@ -247,6 +263,15 @@ class AttendanceActivity : AppCompatActivity() {
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    private fun enrollmentPose(face: com.google.mlkit.vision.face.Face): String {
+        val yaw = face.headEulerAngleY
+        return when {
+            kotlin.math.abs(yaw) < 12f -> "FRONT"
+            yaw < 0f -> "LEFT"
+            else -> "RIGHT"
+        }
+    }
 
     override fun onDestroy() {
         studentsDetector.close()

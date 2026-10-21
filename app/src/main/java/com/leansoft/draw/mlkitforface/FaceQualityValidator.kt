@@ -7,12 +7,14 @@ import androidx.core.graphics.get
 
 /** Lightweight demo quality gates; they reject obviously unsuitable samples before embedding. */
 object FaceQualityValidator {
-    fun rejectionReason(bitmap: Bitmap, face: Face): String? {
+    fun rejectionReason(bitmap: Bitmap, face: Face, allowEnrollmentPose: Boolean = false): String? {
         val bounds = face.boundingBox
         if (bounds.width() < bitmap.width * MIN_FACE_RATIO || bounds.height() < bitmap.height * MIN_FACE_RATIO) {
             return "khuôn mặt quá nhỏ"
         }
-        if (abs(face.headEulerAngleY) > MAX_YAW_DEGREES || abs(face.headEulerAngleX) > MAX_PITCH_DEGREES) {
+        val maxYaw = if (allowEnrollmentPose) ENROLLMENT_MAX_YAW_DEGREES else MAX_YAW_DEGREES
+        val maxPitch = if (allowEnrollmentPose) ENROLLMENT_MAX_PITCH_DEGREES else MAX_PITCH_DEGREES
+        if (abs(face.headEulerAngleY) > maxYaw || abs(face.headEulerAngleX) > maxPitch) {
             return "góc nhìn quá nghiêng (yaw ${face.headEulerAngleY.toInt()}°, pitch ${face.headEulerAngleX.toInt()}°)"
         }
         val crop = runCatching { FaceImagePreprocessor.cropAndAlign(bitmap, face) }.getOrNull()
@@ -20,7 +22,7 @@ object FaceQualityValidator {
         return try {
             if (laplacianVariance(crop) < MIN_LAPLACIAN_VARIANCE) "ảnh khuôn mặt bị mờ" else null
         } finally {
-            crop.recycle()
+            if (crop !== bitmap) crop.recycle()
         }
     }
 
@@ -54,6 +56,8 @@ object FaceQualityValidator {
     private const val MIN_FACE_RATIO = 0.16f
     private const val MAX_YAW_DEGREES = 28f
     private const val MAX_PITCH_DEGREES = 25f
+    const val ENROLLMENT_MAX_YAW_DEGREES = 35f
+    const val ENROLLMENT_MAX_PITCH_DEGREES = 30f
     private const val MIN_LAPLACIAN_VARIANCE = 35.0
     private const val GRID_SIZE = 48
 }
