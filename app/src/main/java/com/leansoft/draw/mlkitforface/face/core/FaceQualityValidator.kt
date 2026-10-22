@@ -1,4 +1,4 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.face.core
 
 import android.graphics.Bitmap
 import com.google.mlkit.vision.face.Face

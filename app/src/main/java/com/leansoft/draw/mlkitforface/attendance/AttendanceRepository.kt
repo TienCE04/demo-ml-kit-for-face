@@ -1,4 +1,4 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.attendance
 
 import android.content.Context
 import org.json.JSONArray
@@ -12,7 +12,9 @@ data class EnrolledStudent(
     val sampleTypes: List<String> = emptyList(),
     val embeddingSamples: List<FloatArray> = emptyList(),
     val consentVersion: String = "ATTENDANCE_FACE_VERIFICATION_V1",
-    val consentAt: Long = System.currentTimeMillis()
+    val consentAt: Long = System.currentTimeMillis(),
+    val secondaryEmbedding: FloatArray = FloatArray(0),
+    val secondaryEmbeddingSamples: List<FloatArray> = emptyList()
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -29,6 +31,9 @@ data class EnrolledStudent(
         if (embeddingSamples.zip(other.embeddingSamples).any { (left, right) -> !left.contentEquals(right) }) return false
         if (consentVersion != other.consentVersion) return false
         if (consentAt != other.consentAt) return false
+        if (!secondaryEmbedding.contentEquals(other.secondaryEmbedding)) return false
+        if (secondaryEmbeddingSamples.size != other.secondaryEmbeddingSamples.size) return false
+        if (secondaryEmbeddingSamples.zip(other.secondaryEmbeddingSamples).any { (left, right) -> !left.contentEquals(right) }) return false
 
         return true
     }
@@ -42,6 +47,8 @@ data class EnrolledStudent(
         result = 31 * result + embeddingSamples.fold(1) { hash, sample -> 31 * hash + sample.contentHashCode() }
         result = 31 * result + consentVersion.hashCode()
         result = 31 * result + consentAt.hashCode()
+        result = 31 * result + secondaryEmbedding.contentHashCode()
+        result = 31 * result + secondaryEmbeddingSamples.fold(1) { hash, sample -> 31 * hash + sample.contentHashCode() }
         return result
     }
 }
@@ -96,7 +103,13 @@ class AttendanceRepository(context: Context) {
                     types,
                     samples,
                     item.optString("consentVersion", "ATTENDANCE_FACE_VERIFICATION_V1"),
-                    item.optLong("consentAt", 0L)
+                    item.optLong("consentAt", 0L),
+                    item.optJSONArray("secondaryEmbedding")?.let { values -> FloatArray(values.length()) { values.getDouble(it).toFloat() } } ?: FloatArray(0),
+                    item.optJSONArray("secondaryEmbeddingSamples")?.let { sampleArray ->
+                        (0 until sampleArray.length()).mapNotNull { sampleIndex ->
+                            sampleArray.optJSONArray(sampleIndex)?.let { sample -> FloatArray(sample.length()) { sample.getDouble(it).toFloat() } }
+                        }
+                    }.orEmpty()
                 )
             }.getOrNull()
         }
@@ -115,6 +128,10 @@ class AttendanceRepository(context: Context) {
             }
             val types = JSONArray()
             entry.sampleTypes.forEach(types::put)
+            val secondary = JSONArray()
+            entry.secondaryEmbedding.forEach(secondary::put)
+            val secondarySamples = JSONArray()
+            entry.secondaryEmbeddingSamples.forEach { sample -> secondarySamples.put(JSONArray().also { values -> sample.forEach(values::put) }) }
             json.put(
                 JSONObject()
                     .put("id", entry.id)
@@ -125,6 +142,8 @@ class AttendanceRepository(context: Context) {
                     .put("sampleTypes", types)
                     .put("consentVersion", entry.consentVersion)
                     .put("consentAt", entry.consentAt)
+                    .put("secondaryEmbedding", secondary)
+                    .put("secondaryEmbeddingSamples", secondarySamples)
             )
         }
         preferences.putString("students", json.toString())
@@ -141,6 +160,10 @@ class AttendanceRepository(context: Context) {
             }
             val types = JSONArray()
             entry.sampleTypes.forEach(types::put)
+            val secondary = JSONArray()
+            entry.secondaryEmbedding.forEach(secondary::put)
+            val secondarySamples = JSONArray()
+            entry.secondaryEmbeddingSamples.forEach { sample -> secondarySamples.put(JSONArray().also { values -> sample.forEach(values::put) }) }
             json.put(
                 JSONObject()
                     .put("id", entry.id)
@@ -151,6 +174,8 @@ class AttendanceRepository(context: Context) {
                     .put("sampleTypes", types)
                     .put("consentVersion", entry.consentVersion)
                     .put("consentAt", entry.consentAt)
+                    .put("secondaryEmbedding", secondary)
+                    .put("secondaryEmbeddingSamples", secondarySamples)
             )
         }
         preferences.putString("students", json.toString())

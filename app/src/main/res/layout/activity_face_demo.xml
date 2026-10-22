@@ -15,7 +15,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="FACE AUTH · MODEL INPUT / OUTPUT"
+            android:text="FACE AUTH · IN-MEMORY DEMO"
             android:textColor="#147D70"
             android:textSize="12sp"
             android:textStyle="bold" />
@@ -24,18 +24,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Embedding &amp; xác thực"
+            android:text="Chụp · embedding · liveness"
             android:textColor="#15232B"
-            android:textSize="26sp"
+            android:textSize="25sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Luồng thử độc lập: 3–4 ảnh đăng ký → các embedding mẫu → 1 ảnh kiểm tra → cosine và quyết định MATCH / NO MATCH. Không chạy BLE và không ghi điểm danh."
-            android:textColor="#56636B"
-            android:textSize="14sp" />
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
@@ -54,44 +46,26 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="01 · TẠO HỒ SƠ EMBEDDING"
+                    android:text="1 · CHỤP HOẶC CHỌN 3–4 ẢNH"
                     android:textColor="#15232B"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
-                <EditText
-                    android:id="@+id/etStudentId"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:hint="Mã sinh viên"
-                    android:inputType="text"
-                    android:singleLine="true" />
-
-                <EditText
-                    android:id="@+id/etStudentName"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:hint="Họ và tên"
-                    android:inputType="textCapWords"
-                    android:singleLine="true" />
-
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Chọn 3–4 ảnh của cùng một người. Cần đủ chính diện và hai hướng trái/phải theo yaw ML Kit. Mỗi ảnh phải có đúng một khuôn mặt, đủ lớn và rõ."
-                    android:textColor="#68757C"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="6dp"
+                    android:text="Ảnh chỉ giữ trong bộ nhớ tạm của màn hình này."
+                    android:textColor="#52636B"
+                    android:textSize="13sp" />
 
-                <CheckBox
-                    android:id="@+id/cbConsent"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCaptureEnrollmentPhoto"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Đồng ý tạo và lưu embedding để thử xác thực (demo)"
-                    android:textSize="13sp" />
+                    android:layout_marginTop="8dp"
+                    android:text="Chụp ảnh bằng camera" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnPickEnrollmentPhotos"
@@ -99,7 +73,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Chọn 3–4 ảnh đăng ký" />
+                    android:text="Chọn ảnh từ thiết bị" />
 
                 <TextView
                     android:id="@+id/tvEnrollmentInput"
@@ -108,26 +82,58 @@
                     android:layout_marginTop="6dp"
                     android:background="#EFF5F4"
                     android:padding="10dp"
-                    android:text="Chưa chọn ảnh đăng ký."
+                    android:text="Chưa có ảnh đăng ký."
                     android:textColor="#23594F"
                     android:textSize="13sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardBackgroundColor="#FFFFFF"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="2 · CHỌN MODEL VÀ TẠO EMBEDDING"
+                    android:textColor="#15232B"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSelectModel"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Model: MobileFaceNet" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCreateEmbedding"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Tạo embedding &amp; lưu hồ sơ" />
+                    android:layout_marginTop="6dp"
+                    android:text="Tạo embedding trong RAM" />
 
                 <TextView
-                    android:id="@+id/tvEnrollmentOutput"
+                    android:id="@+id/tvEmbeddingOutput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:background="#F4F6F8"
                     android:fontFamily="monospace"
                     android:padding="12dp"
-                    android:text="Đầu ra model sẽ hiển thị tại đây."
+                    android:text="Embedding chưa được tạo."
                     android:textColor="#29383F"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
@@ -152,7 +158,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="02 · XÁC THỰC ẢNH KIỂM TRA"
+                    android:text="3 · LIVENESS CAMERA TRỰC TIẾP"
                     android:textColor="#15232B"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -161,27 +167,57 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Chọn một ảnh mới. App tạo embedding 192-D, so cosine với từng mẫu của mọi hồ sơ; MATCH cần đạt cả ngưỡng cosine đã cấu hình và margin phân biệt người đứng đầu."
-                    android:textColor="#68757C"
-                    android:textSize="12sp" />
+                    android:text="Chọn camera realtime có liveness hoặc chụp một ảnh để so khớp."
+                    android:textColor="#52636B"
+                    android:textSize="13sp" />
+
+                <FrameLayout
+                    android:id="@+id/livenessCameraContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="260dp"
+                    android:layout_marginTop="8dp"
+                    android:background="#10191E"
+                    android:visibility="gone">
+
+                    <androidx.camera.view.PreviewView
+                        android:id="@+id/livenessPreview"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        app:scaleType="fillCenter" />
+                </FrameLayout>
 
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnPickProbePhoto"
+                    android:id="@+id/btnStartLiveness"
                     style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Chọn ảnh kiểm tra &amp; chạy xác thực" />
+                    android:text="Camera realtime · liveness" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCaptureProbePhoto"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Chụp 1 ảnh · so khớp embedding" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStopLiveness"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Dừng liveness" />
 
                 <TextView
-                    android:id="@+id/tvAuthOutput"
+                    android:id="@+id/tvLivenessOutput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:background="#EFF5F4"
                     android:fontFamily="monospace"
                     android:padding="12dp"
-                    android:text="Chưa có ảnh xác thực."
+                    android:text="Tạo embedding trước khi chạy camera liveness."
                     android:textColor="#23594F"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />

@@ -1,4 +1,5 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.attendance
+import com.leansoft.draw.mlkitforface.face.core.FaceEmbeddingModel
 
 import org.json.JSONObject
 import java.security.MessageDigest

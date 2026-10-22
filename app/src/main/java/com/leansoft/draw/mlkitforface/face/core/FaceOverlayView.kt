@@ -1,4 +1,4 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.face.core
 
 import android.content.Context
 import android.graphics.Canvas

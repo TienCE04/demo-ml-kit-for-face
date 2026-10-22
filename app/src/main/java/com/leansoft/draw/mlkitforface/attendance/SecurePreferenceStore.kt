@@ -1,4 +1,4 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.attendance
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -10,6 +10,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import androidx.core.content.edit
 
 /** Small encrypted SharedPreferences adapter for local demo data. */
 class SecurePreferenceStore(context: Context, name: String) {
@@ -24,7 +25,7 @@ class SecurePreferenceStore(context: Context, name: String) {
     }
 
     fun putString(key: String, value: String) {
-        preferences.edit().putString(key, encrypt(value)).apply()
+        preferences.edit { putString(key, encrypt(value)) }
     }
 
     fun getFloat(key: String, defaultValue: Float): Float =

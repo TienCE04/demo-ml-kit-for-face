@@ -1,4 +1,7 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.attendance
+import com.leansoft.draw.mlkitforface.face.core.FaceEmbeddingModel
+import com.leansoft.draw.mlkitforface.face.core.FaceImagePreprocessor
+import com.leansoft.draw.mlkitforface.face.core.FaceQualityValidator
 
 import android.app.AlertDialog
 import android.net.Uri

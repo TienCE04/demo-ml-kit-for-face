@@ -21,15 +21,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Mlkitforface">
-        <activity android:name=".FaceDemoActivity" android:exported="false" />
-        <activity android:name=".AttendanceActivity" android:exported="false" />
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".face.demo.FaceDemoActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".attendance.AttendanceActivity" android:exported="false" />
+        <activity android:name=".legacy.MainActivity" android:exported="false" />
     </application>
 
 </manifest>

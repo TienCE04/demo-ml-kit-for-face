@@ -1,4 +1,13 @@
-package com.leansoft.draw.mlkitforface
+package com.leansoft.draw.mlkitforface.legacy
+import com.leansoft.draw.mlkitforface.R
+import com.leansoft.draw.mlkitforface.attendance.AttendanceActivity
+import com.leansoft.draw.mlkitforface.attendance.AttendanceRepository
+import com.leansoft.draw.mlkitforface.attendance.DemoAttendanceGateway
+import com.leansoft.draw.mlkitforface.face.demo.FaceDemoActivity
+import com.leansoft.draw.mlkitforface.face.core.FaceEmbeddingModel
+import com.leansoft.draw.mlkitforface.face.core.FaceImagePreprocessor
+import com.leansoft.draw.mlkitforface.face.core.FaceQualityValidator
+import com.leansoft.draw.mlkitforface.face.core.FaceOverlayView
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
@@ -153,11 +162,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnAttendanceRecords.setOnClickListener { startActivity(Intent(this, AttendanceActivity::class.java)) }
         binding.btnFaceAuthDemo.setOnClickListener { startActivity(Intent(this, FaceDemoActivity::class.java)) }
         binding.btnCheckIn.setOnClickListener { checkInFromCamera() }
-        binding.btnBleScan.setOnClickListener { beginBleVerification() }
-        binding.btnEndSession.setOnClickListener { endAttendanceSession() }
-        binding.btnBle.setOnClickListener {
-            if (advertising) stopBleServer() else requestBlePermissions()
-        }
+        // BLE tạm thời được vô hiệu hóa để tập trung kiểm thử ML Kit/MobileFaceNet.
+        // binding.btnBleScan.setOnClickListener { beginBleVerification() }
+        // binding.btnEndSession.setOnClickListener { endAttendanceSession() }
+        // binding.btnBle.setOnClickListener {
+        //     if (advertising) stopBleServer() else requestBlePermissions()
+        // }
+        binding.bleCard.visibility = android.view.View.GONE
     }
 
     private fun modeName() = if (selectedMode == 0) "Nhanh" else "Chi tiết"
@@ -255,6 +266,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkInFromCamera() {
+        if (!BLE_ENABLED) {
+            showMessage("BLE đang tạm tắt. Dùng màn hình 'Thử riêng embedding & xác thực' để kiểm tra model.")
+            return
+        }
         if (!isFaceStepReady()) {
             beginBleVerification()
             return
@@ -727,6 +742,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        // Bật lại khi muốn kiểm thử luồng BLE/GATT và dashboard.
+        private const val BLE_ENABLED = false
         // Project3 contract: service data carries v1|<sessionCode>|<token>.
         val SERVICE_UUID: UUID = UUID.fromString("7b7e2401-8d9c-4ea7-a5e1-2c89b47ef201")
         val RESULT_UUID: UUID = UUID.fromString("7c6f1001-8f1b-4d4b-a752-6f656d6f0001")
